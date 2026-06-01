@@ -22,24 +22,25 @@ yarn test src/wallets/wallets.service.spec.ts
 
 ## Architecture Overview
 
-This is a custodial multi-chain wallet service built with NestJS. Ethereum is the only chain with a fully implemented signing path; BTC and XRP are registered in the `networks` table as future targets.
+This is a custodial multi-chain wallet service built with NestJS. Ethereum is the only chain with a fully implemented signing path; BTC and XRP are registered in the `network` table as future targets.
 
 ### Infrastructure dependencies
 
 - **PostgreSQL** — primary datastore (TypeORM `synchronize: false`; schema managed entirely by goose)
-- **Redis** — BullMQ queue backend for withdrawal jobs
 - **AWS KMS** — available via `KmsService` but not yet on the critical signing path (planned for master mnemonic encryption)
 - **Ethereum node** — self-hosted, connected via WebSocket (`ETH_WS_URL`)
 
 ### Multi-chain support
 
-Supported networks are stored in the `networks` table (id, name, symbol, chain_id, is_active). Each `wallet` row references a `network_id`. The `GET /networks` endpoint returns all active networks.
+Supported networks are stored in the `network` table. Each `wallet` row references a `network_id`. The `GET /networks` endpoint returns all active networks.
 
-To register a new chain, insert a row into `networks`:
+To register a new chain, insert a row into `network`:
 ```sql
-INSERT INTO networks (name, symbol, chain_id, is_active)
-VALUES ('Polygon', 'MATIC', 137, true);
+INSERT INTO network (name, symbol, chain_id, coin_type, is_active)
+VALUES ('Polygon', 'MATIC', 137, 966, true);
 ```
+
+`coin_type` is the BIP44 coin type used in HD derivation paths (ETH = 60, BTC = 0, XRP = 144).
 
 Address derivation per chain is implemented inside `WalletsService.create()`. Currently only `symbol = 'ETH'` is implemented; adding a new chain requires adding a branch there (and any required library for key derivation).
 
@@ -47,9 +48,9 @@ Address derivation per chain is implemented inside `WalletsService.create()`. Cu
 
 All Ethereum wallet addresses are derived from a single BIP39 master mnemonic stored in `WALLET_MASTER_MNEMONIC`. `EthereumService` loads it at startup into `masterNode` (`ethers.HDNodeWallet.fromPhrase`), and `deriveWallet(index)` returns `m/44'/60'/0'/0/{index}` connected to the provider.
 
-The `derivationIndex` column in the `wallets` table is the only persistent key material — **no private keys are stored in the database**. The index is scoped per network (each network maintains its own sequence starting from 0), guaranteeing uniqueness within a chain.
+The `derivationIndex` column in the `wallet` table is the only persistent key material — **no private keys are stored in the database**. The index is scoped per network (each network maintains its own sequence starting from 0), guaranteeing uniqueness within a chain.
 
-`WalletsService.getDecryptedSigner()` is the single call site that re-derives a signer for signing withdrawals.
+`WalletsService.getDecryptedSigner()` is the single call site that re-derives a signer.
 
 Planned migration: replace `WALLET_MASTER_MNEMONIC` with a KMS-encrypted value so the plaintext mnemonic never appears in env. Only `EthereumService.onModuleInit()` needs to change.
 
@@ -60,19 +61,13 @@ Planned migration: replace `WALLET_MASTER_MNEMONIC` with a KMS-encrypted value s
 | `kms` | Thin wrapper around `@aws-sdk/client-kms`. `encrypt()` returns base64 ciphertext; `decrypt()` returns plaintext. Not on the active signing path yet. |
 | `ethereum` | Owns the `WebSocketProvider` and `masterNode`. `deriveWallet(index)` is the only way to obtain an ETH signer. |
 | `auth` | JWT registration/login. Passport `jwt` strategy attaches the full `User` to `req.user`. |
-| `networks` | CRUD for the `networks` table. `NetworksService` is exported for use by `WalletsModule`. |
-| `wallets` | Accepts a `networkId` on creation, assigns a per-network unique `derivationIndex`, derives the address, persists to DB. |
-| `assets` | Read-only access to the `assets` table. New tokens are added directly in the DB — `contractAddress` is `null` for ETH. |
-| `indexer` | Subscribes to `provider.on('block')`. For each block: scans ETH value transfers and queries ERC20 `Transfer` logs per active asset. Upserts into `transactions` by `txHash`. |
+| `networks` | CRUD for the `network` table. `NetworksService` is exported for use by `WalletsModule` and `IndexerModule`. |
+| `wallets` | Accepts a `networkId` on creation, assigns a per-network unique `derivationIndex`, derives the address, persists to DB. Balance queries use `NetworkAssetsService` to resolve contract addresses per network. |
+| `assets` | Read-only access to the `asset` table (symbol, name, decimals). New assets are added directly in the DB. |
+| `network-assets` | Maps assets to networks with their chain-specific `contract_address`. `NetworkAssetsService.findByNetworkId()` is the single entry point for resolving which tokens are active on a given chain. |
+| `user-asset-balances` | Stores per-wallet token balances (updated by the indexer or balance sync). |
+| `indexer` | Subscribes to `provider.on('block')`. For each block: resolves the ETH network's active `network_asset` rows, scans ETH value transfers and queries ERC20 `Transfer` logs. Upserts into `transaction` by `tx_hash`. |
 | `transactions` | Stores confirmed on-chain transfers. Written exclusively by `IndexerService`. |
-| `withdrawals` | Accepts withdrawal requests → persists to DB → enqueues a BullMQ job. `WithdrawalsProcessor` re-derives the signer, broadcasts the tx, then waits for 1 confirmation. |
-
-### Withdrawal state machine
-
-```
-PENDING → BROADCASTING (tx hash assigned) → CONFIRMED
-                                           ↘ FAILED
-```
 
 ### Amount representation
 
@@ -80,12 +75,38 @@ All token amounts are stored and passed as `amountRaw` — an integer string in 
 
 ### Adding a new supported token
 
-Insert a row into the `assets` table:
+1. Insert the abstract asset (chain-agnostic):
 ```sql
-INSERT INTO assets (symbol, name, contract_address, decimals, is_active)
-VALUES ('USDT', 'Tether USD', '0xdAC17F958D2ee523a2206206994597C13D831ec7', 6, true);
+INSERT INTO asset (symbol, name, decimals)
+VALUES ('USDT', 'Tether USD', 6);
 ```
-For ETH, set `contract_address = NULL`.
+
+2. Map it to a specific network with its contract address:
+```sql
+INSERT INTO network_asset (network_id, asset_id, contract_address, is_active)
+VALUES (
+  (SELECT id FROM network WHERE symbol = 'ETH'),
+  (SELECT id FROM asset   WHERE symbol = 'USDT'),
+  '0xdAC17F958D2ee523a2206206994597C13D831ec7',
+  true
+);
+```
+
+For native coins (ETH, BTC), set `contract_address = NULL`.
+
+### Database schema
+
+All primary keys are `BIGINT GENERATED ALWAYS AS IDENTITY`. The `"user"` table name is quoted because `user` is a PostgreSQL reserved keyword.
+
+| Table | Key columns |
+|-------|-------------|
+| `"user"` | id, email, password_hash |
+| `asset` | id, symbol, name, decimals |
+| `network` | id, name, symbol, chain_id, coin_type, is_active |
+| `wallet` | id, user_id → user, network_id → network, address, derivation_index |
+| `transaction` | id, tx_hash (unique), asset_id → asset, from_address, to_address, amount_raw, status |
+| `network_asset` | id, network_id → network, asset_id → asset, contract_address, is_active; UNIQUE(network_id, asset_id) |
+| `user_asset_balance` | id, wallet_id → wallet, network_asset_id → network_asset, amount_raw; UNIQUE(wallet_id, network_asset_id) |
 
 ### Database migrations
 
@@ -97,7 +118,9 @@ brew install goose
 
 # Go toolchain
 go install github.com/pressly/goose/v3/cmd/goose@latest
-``` Migration files live in `database/migrations/` and are numbered sequentially.
+```
+
+Migration files live in `database/migrations/` and are numbered sequentially.
 
 ```bash
 make migrate-status                              # show applied / pending migrations
@@ -114,6 +137,6 @@ The Makefile reads DB credentials from `.env` via `-include .env`. On AWS set `D
 
 ### Configuration
 
-All config is loaded via `@nestjs/config` namespace keys. The three registered namespaces are `database.*`, `kms.*`, and `ethereum.*` (see `src/common/config/`). Flat env vars (`JWT_SECRET`, `REDIS_HOST`, `REDIS_PORT`) are accessed directly without a namespace.
+All config is loaded via `@nestjs/config` namespace keys. The three registered namespaces are `database.*`, `kms.*`, and `ethereum.*` (see `src/common/config/`). `JWT_SECRET` is accessed directly without a namespace.
 
 Copy `.env.example` to `.env` to get started locally.

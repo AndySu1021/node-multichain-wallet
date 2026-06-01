@@ -17,4 +17,8 @@ export class NetworksService {
   findOne(id: string): Promise<Network | null> {
     return this.networkRepo.findOne({ where: { id } });
   }
+
+  findBySymbol(symbol: string): Promise<Network | null> {
+    return this.networkRepo.findOne({ where: { symbol } });
+  }
 }

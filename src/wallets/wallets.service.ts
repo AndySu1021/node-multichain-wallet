@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Wallet } from './entities/wallet.entity';
 import { EthereumService } from '../ethereum/ethereum.service';
-import { AssetsService } from '../assets/assets.service';
+import { NetworkAssetsService } from '../network-assets/network-assets.service';
 import { NetworksService } from '../networks/networks.service';
 
 @Injectable()
@@ -12,7 +12,7 @@ export class WalletsService {
     @InjectRepository(Wallet)
     private readonly walletRepo: Repository<Wallet>,
     private readonly ethereumService: EthereumService,
-    private readonly assetsService: AssetsService,
+    private readonly networkAssetsService: NetworkAssetsService,
     private readonly networksService: NetworksService,
   ) {}
 
@@ -47,14 +47,14 @@ export class WalletsService {
 
   async getBalances(walletId: string, userId: string) {
     const wallet = await this.findOne(walletId, userId);
-    const assets = await this.assetsService.findActive();
+    const networkAssets = await this.networkAssetsService.findByNetworkId(wallet.networkId);
 
     const balances = await Promise.all(
-      assets.map(async (asset) => {
-        const balanceRaw = asset.contractAddress
-          ? await this.ethereumService.getErc20Balance(asset.contractAddress, wallet.address)
+      networkAssets.map(async (na) => {
+        const balanceRaw = na.contractAddress
+          ? await this.ethereumService.getErc20Balance(na.contractAddress, wallet.address)
           : await this.ethereumService.getEthBalance(wallet.address);
-        return { asset: { id: asset.id, symbol: asset.symbol, decimals: asset.decimals }, balanceRaw };
+        return { asset: { id: na.asset.id, symbol: na.asset.symbol, decimals: na.asset.decimals }, balanceRaw };
       }),
     );
     return { address: wallet.address, balances };

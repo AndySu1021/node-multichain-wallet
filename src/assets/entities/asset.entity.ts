@@ -14,14 +14,8 @@ export class Asset {
   @Column()
   name: string;
 
-  @Column({ name: 'contract_address', nullable: true, unique: true })
-  contractAddress: string;
-
   @Column()
   decimals: number;
-
-  @Column({ name: 'is_active', default: true })
-  isActive: boolean;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

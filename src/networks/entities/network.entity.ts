@@ -18,6 +18,9 @@ export class Network {
   @Column({ name: 'chain_id', nullable: true })
   chainId: number;
 
+  @Column({ name: 'coin_type', type: 'smallint' })
+  coinType: number;
+
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 

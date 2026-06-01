@@ -10,10 +10,6 @@ export class AssetsService {
     private readonly assetRepo: Repository<Asset>,
   ) {}
 
-  findActive(): Promise<Asset[]> {
-    return this.assetRepo.find({ where: { isActive: true } });
-  }
-
   findAll(): Promise<Asset[]> {
     return this.assetRepo.find();
   }

@@ -9,6 +9,6 @@ export class AssetsController {
 
   @Get()
   findAll() {
-    return this.assetsService.findActive();
+    return this.assetsService.findAll();
   }
 }

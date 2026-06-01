@@ -3,7 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ethers } from 'ethers';
 import { EthereumService } from '../ethereum/ethereum.service';
-import { AssetsService } from '../assets/assets.service';
+import { NetworkAssetsService } from '../network-assets/network-assets.service';
+import { NetworksService } from '../networks/networks.service';
 import { TransactionsService } from '../transactions/transactions.service';
 import { Wallet } from '../wallets/entities/wallet.entity';
 import { TransactionStatus } from '../transactions/entities/transaction.entity';
@@ -11,18 +12,29 @@ import { TransactionStatus } from '../transactions/entities/transaction.entity';
 @Injectable()
 export class IndexerService implements OnModuleInit {
   private readonly logger = new Logger(IndexerService.name);
+  private ethNetworkId: string | null = null;
 
   constructor(
     @InjectRepository(Wallet)
     private readonly walletRepo: Repository<Wallet>,
     private readonly ethereumService: EthereumService,
-    private readonly assetsService: AssetsService,
+    private readonly networkAssetsService: NetworkAssetsService,
+    private readonly networksService: NetworksService,
     private readonly transactionsService: TransactionsService,
   ) {}
 
   async onModuleInit() {
     // TODO: re-enable before going live
     // await this.startListening();
+  }
+
+  private async getEthNetworkId(): Promise<string> {
+    if (!this.ethNetworkId) {
+      const network = await this.networksService.findBySymbol('ETH');
+      if (!network) throw new Error('ETH network not found in database');
+      this.ethNetworkId = network.id;
+    }
+    return this.ethNetworkId;
   }
 
   private async startListening() {
@@ -40,20 +52,22 @@ export class IndexerService implements OnModuleInit {
   }
 
   private async processBlock(blockNumber: number) {
-    const [block, assets, wallets] = await Promise.all([
+    const ethNetworkId = await this.getEthNetworkId();
+
+    const [block, networkAssets, wallets] = await Promise.all([
       this.ethereumService.getProvider().getBlock(blockNumber, true),
-      this.assetsService.findActive(),
+      this.networkAssetsService.findByNetworkId(ethNetworkId),
       this.walletRepo.find(),
     ]);
 
     if (!block || !block.transactions.length) return;
 
     const watchedAddresses = new Set(wallets.map((w) => w.address.toLowerCase()));
-    const ethAsset = assets.find((a) => !a.contractAddress);
-    const erc20Assets = assets.filter((a) => a.contractAddress);
+    const ethNetworkAsset = networkAssets.find((na) => !na.contractAddress);
+    const erc20NetworkAssets = networkAssets.filter((na) => na.contractAddress);
 
     // Process ETH transfers
-    if (ethAsset) {
+    if (ethNetworkAsset) {
       for (const tx of block.transactions as unknown as ethers.TransactionResponse[]) {
         if (!tx.to) continue;
         const isIncoming = watchedAddresses.has(tx.to.toLowerCase());
@@ -65,7 +79,7 @@ export class IndexerService implements OnModuleInit {
           blockNumber,
           fromAddress: tx.from,
           toAddress: tx.to,
-          assetId: ethAsset.id,
+          assetId: ethNetworkAsset.asset.id,
           amountRaw: tx.value.toString(),
           status: TransactionStatus.CONFIRMED,
         });
@@ -73,8 +87,8 @@ export class IndexerService implements OnModuleInit {
     }
 
     // Process ERC20 Transfer events
-    for (const asset of erc20Assets) {
-      const contract = this.ethereumService.getErc20Contract(asset.contractAddress);
+    for (const na of erc20NetworkAssets) {
+      const contract = this.ethereumService.getErc20Contract(na.contractAddress!);
       const filter = contract.filters.Transfer();
       const logs = await contract.queryFilter(filter, blockNumber, blockNumber);
 
@@ -91,7 +105,7 @@ export class IndexerService implements OnModuleInit {
           blockNumber,
           fromAddress: from,
           toAddress: to,
-          assetId: asset.id,
+          assetId: na.asset.id,
           amountRaw: value.toString(),
           status: TransactionStatus.CONFIRMED,
         });
