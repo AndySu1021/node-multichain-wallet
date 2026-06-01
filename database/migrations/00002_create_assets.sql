@@ -1,6 +1,6 @@
 -- +goose Up
-CREATE TABLE assets (
-    id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE asset (
+    id               BIGINT       PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
     symbol           VARCHAR(20)  NOT NULL UNIQUE,
     name             VARCHAR(100) NOT NULL,
     contract_address VARCHAR(42)  UNIQUE,
@@ -11,4 +11,4 @@ CREATE TABLE assets (
 );
 
 -- +goose Down
-DROP TABLE assets;
+DROP TABLE asset;

@@ -13,9 +13,9 @@ export enum WithdrawalStatus {
   FAILED = 'failed',
 }
 
-@Entity('withdrawals')
+@Entity('withdrawal')
 export class Withdrawal {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn({ type: 'bigint' })
   id: string;
 
   @Column({ name: 'user_id' })

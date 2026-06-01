@@ -1,10 +1,10 @@
-import { IsString, IsUUID, Matches } from 'class-validator';
+import { IsNumberString, IsString, Matches } from 'class-validator';
 
 export class CreateWithdrawalDto {
-  @IsUUID()
+  @IsNumberString()
   walletId: string;
 
-  @IsUUID()
+  @IsNumberString()
   assetId: string;
 
   @IsString()

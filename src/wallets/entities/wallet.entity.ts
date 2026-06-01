@@ -5,16 +5,16 @@ import {
 import { User } from '../../users/entities/user.entity';
 import { Network } from '../../networks/entities/network.entity';
 
-@Entity('wallets')
+@Entity('wallet')
 export class Wallet {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn({ type: 'bigint' })
   id: string;
 
   @Column({ name: 'user_id' })
   userId: string;
 
-  @Column({ name: 'network_id' })
-  networkId: number;
+  @Column({ name: 'network_id', type: 'bigint' })
+  networkId: string;
 
   @Column()
   address: string;

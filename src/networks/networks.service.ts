@@ -14,7 +14,7 @@ export class NetworksService {
     return this.networkRepo.find({ where: { isActive: true } });
   }
 
-  findOne(id: number): Promise<Network | null> {
+  findOne(id: string): Promise<Network | null> {
     return this.networkRepo.findOne({ where: { id } });
   }
 }

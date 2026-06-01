@@ -9,9 +9,9 @@ export enum TransactionStatus {
   FAILED = 'failed',
 }
 
-@Entity('transactions')
+@Entity('transaction')
 export class Transaction {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn({ type: 'bigint' })
   id: string;
 
   @Index({ unique: true })

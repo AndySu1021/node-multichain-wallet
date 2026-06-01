@@ -16,7 +16,7 @@ export class WalletsService {
     private readonly networksService: NetworksService,
   ) {}
 
-  async create(userId: string, networkId: number): Promise<Wallet> {
+  async create(userId: string, networkId: string): Promise<Wallet> {
     const network = await this.networksService.findOne(networkId);
     if (!network) throw new NotFoundException('Network not found');
     if (!network.isActive) throw new BadRequestException('Network is not active');
@@ -36,7 +36,7 @@ export class WalletsService {
   }
 
   async findAllByUser(userId: string): Promise<Wallet[]> {
-    return this.walletRepo.find({ where: { userId }, relations: ['network'] });
+    return this.walletRepo.find({ where: { userId }, relations: { network: true } });
   }
 
   async findOne(id: string, userId: string): Promise<Wallet> {

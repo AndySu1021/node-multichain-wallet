@@ -1,7 +1,8 @@
-import { IsInt, Min } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsNumberString } from 'class-validator';
 
 export class CreateWalletDto {
-  @IsInt()
-  @Min(1)
-  networkId: number;
+  @Transform(({ value }) => String(value))
+  @IsNumberString()
+  networkId: string;
 }

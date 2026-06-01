@@ -5,9 +5,9 @@ import {
 import { Wallet } from '../../wallets/entities/wallet.entity';
 import { Withdrawal } from '../../withdrawals/entities/withdrawal.entity';
 
-@Entity('users')
+@Entity('user')
 export class User {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn({ type: 'bigint' })
   id: string;
 
   @Column({ unique: true })

@@ -1,11 +1,11 @@
 -- +goose Up
 CREATE TYPE withdrawal_status AS ENUM ('pending', 'broadcasting', 'confirmed', 'failed');
 
-CREATE TABLE withdrawals (
-    id            UUID              PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id       UUID              NOT NULL REFERENCES users(id),
-    wallet_id     UUID              NOT NULL REFERENCES wallets(id),
-    asset_id      UUID              NOT NULL REFERENCES assets(id),
+CREATE TABLE withdrawal (
+    id            BIGINT            PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    user_id       BIGINT            NOT NULL REFERENCES "user"(id),
+    wallet_id     BIGINT            NOT NULL REFERENCES wallet(id),
+    asset_id      BIGINT            NOT NULL REFERENCES asset(id),
     to_address    VARCHAR(42)       NOT NULL,
     amount_raw    NUMERIC(78, 0)    NOT NULL,
     tx_hash       VARCHAR(66),
@@ -15,8 +15,8 @@ CREATE TABLE withdrawals (
     updated_at    TIMESTAMPTZ       NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_withdrawals_user_id ON withdrawals(user_id);
+CREATE INDEX idx_withdrawal_user_id ON withdrawal(user_id);
 
 -- +goose Down
-DROP TABLE withdrawals;
+DROP TABLE withdrawal;
 DROP TYPE withdrawal_status;

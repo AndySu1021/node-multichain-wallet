@@ -4,10 +4,10 @@ import {
 } from 'typeorm';
 import { Wallet } from '../../wallets/entities/wallet.entity';
 
-@Entity('networks')
+@Entity('network')
 export class Network {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn({ type: 'bigint' })
+  id: string;
 
   @Column()
   name: string;

@@ -3,9 +3,9 @@ import {
   CreateDateColumn, UpdateDateColumn,
 } from 'typeorm';
 
-@Entity('assets')
+@Entity('asset')
 export class Asset {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn({ type: 'bigint' })
   id: string;
 
   @Column({ unique: true })
