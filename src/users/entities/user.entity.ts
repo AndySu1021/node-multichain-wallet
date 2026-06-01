@@ -3,7 +3,6 @@ import {
   CreateDateColumn, UpdateDateColumn, OneToMany,
 } from 'typeorm';
 import { Wallet } from '../../wallets/entities/wallet.entity';
-import { Withdrawal } from '../../withdrawals/entities/withdrawal.entity';
 
 @Entity('user')
 export class User {
@@ -24,7 +23,4 @@ export class User {
 
   @OneToMany(() => Wallet, (wallet) => wallet.user)
   wallets: Wallet[];
-
-  @OneToMany(() => Withdrawal, (withdrawal) => withdrawal.user)
-  withdrawals: Withdrawal[];
 }
